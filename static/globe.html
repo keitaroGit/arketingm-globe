@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>arketingm — Geopolitical Globe</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#020b1a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow:hidden;user-select:none}
+#wrap{position:relative;width:100vw;height:100vh}
+canvas{width:100%;height:100%;display:block;cursor:grab}
+canvas.dragging{cursor:grabbing}
+.flt{background:rgba(255,255,255,0.07);border:0.5px solid rgba(255,255,255,0.14);border-radius:5px;color:rgba(170,195,225,0.55);font-size:11px;letter-spacing:0.07em;padding:5px 11px;cursor:pointer;transition:all .15s;font-family:inherit}
+.flt:hover{background:rgba(255,255,255,0.12);color:rgba(200,220,240,0.9)}
+.flt.active{background:rgba(59,130,246,0.2);border-color:rgba(59,130,246,0.5);color:#93c5fd}
+.lang{background:none;border:none;color:#93c5fd;font-size:12px;font-weight:600;cursor:pointer;letter-spacing:0.06em;padding:4px 7px;transition:opacity .15s}
+#controls{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;gap:6px;align-items:center;white-space:nowrap}
+#panel{position:absolute;top:56px;right:14px;width:252px;background:rgba(3,12,26,0.97);border:0.5px solid rgba(255,255,255,0.13);border-radius:10px;padding:15px;display:none;max-height:calc(100vh - 80px);overflow-y:auto}
+#legend{position:absolute;bottom:48px;left:14px;display:flex;flex-direction:column;gap:5px}
+.leg{display:flex;align-items:center;gap:6px;font-size:11px;color:rgba(170,195,220,0.5)}
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+#zoombar{position:absolute;bottom:14px;left:14px;display:flex;gap:6px;align-items:center}
+.zbtn{width:28px;height:28px;background:rgba(255,255,255,0.07);border:0.5px solid rgba(255,255,255,0.14);border-radius:5px;color:rgba(170,195,225,0.7);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.zbtn:hover{background:rgba(255,255,255,0.14)}
+#hint{position:absolute;bottom:18px;right:14px;font-size:10px;color:rgba(170,195,220,0.22);letter-spacing:.04em}
+#status{position:absolute;top:14px;left:14px;font-size:10px;color:rgba(170,195,220,0.3);letter-spacing:.04em;line-height:1.7}
+.dtag{font-size:10px;padding:3px 7px;border-radius:4px;background:rgba(255,255,255,0.08);color:rgba(200,215,235,0.85);font-weight:500;letter-spacing:.03em;display:inline-block;margin:2px}
+.dtag.up{background:rgba(16,185,129,0.15);color:#6ee7b7}
+.dtag.down{background:rgba(239,68,68,0.15);color:#fca5a5}
+.impact-box{margin-top:10px;padding:9px 10px;border-radius:6px;border:0.5px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.07)}
+.impact-title{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:rgba(252,165,165,0.7);margin-bottom:5px;font-weight:600}
+.impact-item{font-size:11px;color:rgba(220,200,200,0.82);line-height:1.6;display:flex;gap:5px;margin-bottom:2px}
+.impact-item::before{content:'→';color:rgba(252,165,165,0.5);flex-shrink:0}
+#price-bar{position:absolute;bottom:0;left:0;right:0;height:28px;background:rgba(2,10,22,0.9);border-top:0.5px solid rgba(255,255,255,0.08);display:flex;align-items:center;overflow:hidden;white-space:nowrap}
+#ticker-scroll{display:inline-flex;gap:0;animation:scroll 40s linear infinite}
+#ticker-scroll:hover{animation-play-state:paused}
+@keyframes scroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+.tick-item{font-size:11px;font-family:monospace;padding:0 16px;letter-spacing:.03em;border-right:0.5px solid rgba(255,255,255,0.06)}
+.tick-name{color:rgba(170,195,220,0.5);margin-right:5px}
+.tick-price{color:#e8edf2;margin-right:4px}
+.tick-chg.up{color:#6ee7b7}
+.tick-chg.down{color:#fca5a5}
+#sep{width:1px;height:20px;background:rgba(255,255,255,0.12);margin:0 3px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="globe"></canvas>
+
+  <div id="controls">
+    <button class="flt active" onclick="setFilter('all',this)" id="f-all">ALL</button>
+    <button class="flt" onclick="setFilter('geo',this)" id="f-geo">RISK</button>
+    <button class="flt" onclick="setFilter('stock',this)" id="f-stock">MARKETS</button>
+    <button class="flt" onclick="setFilter('macro',this)" id="f-macro">MACRO</button>
+    <div id="sep"></div>
+    <button class="lang" id="l-en" onclick="setLang('en')" style="opacity:1">EN</button>
+    <button class="lang" id="l-ja" onclick="setLang('ja')" style="opacity:.32">JA</button>
+  </div>
+
+  <div id="status">
+    <div id="st-pins">— pins</div>
+    <div id="st-prices" style="color:rgba(100,200,150,0.4)">prices loading…</div>
+  </div>
+
+  <div id="panel">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:9px">
+      <span id="panel-tag" style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:4px;font-weight:600"></span>
+      <button style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:20px;line-height:1;padding:0" onclick="document.getElementById('panel').style.display='none'">×</button>
+    </div>
+    <div id="panel-title" style="font-size:15px;font-weight:600;color:#e8edf2;margin-bottom:4px;line-height:1.3"></div>
+    <div id="panel-ticker" style="font-size:11px;color:rgba(150,170,200,0.6);margin-bottom:8px;font-family:monospace;letter-spacing:.04em"></div>
+    <div id="panel-body" style="font-size:12px;color:rgba(185,205,225,0.8);line-height:1.7;margin-bottom:8px"></div>
+    <div id="panel-data" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px"></div>
+    <div id="panel-live" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+    <div id="panel-impact"></div>
+  </div>
+
+  <div id="legend">
+    <div class="leg"><span class="dot" style="background:#ef4444"></span><span id="l-risk">Geopolitical risk</span></div>
+    <div class="leg"><span class="dot" style="background:#3b82f6"></span><span id="l-mkt">Markets / S&P500</span></div>
+    <div class="leg"><span class="dot" style="background:#f59e0b"></span><span id="l-mac">Macro event</span></div>
+  </div>
+
+  <div id="zoombar">
+    <button class="zbtn" onclick="zoomIn()">+</button>
+    <button class="zbtn" onclick="zoomOut()">−</button>
+    <span id="zoom-label" style="font-size:10px;color:rgba(170,195,220,0.3);min-width:36px">1.0×</span>
+  </div>
+
+  <div id="hint">SCROLL TO ZOOM · DRAG TO ROTATE</div>
+
+  <div id="price-bar">
+    <div id="ticker-scroll"></div>
+  </div>
+</div>
+
+<script>
+var LANG = 'en', FILTER = 'all';
+var allPinMeshes = [], ringMeshes = [];
+var targetZ = 2.9, currentZ = 2.9;
+var LIVE_PRICES = {};
+
+// ── PIN DATA ──────────────────────────────────────────────────────────────────
+var PINS = [
+  // STOCKS
+  {t:'stock',c:0x3b82f6,la:37.33,lo:-122.03,tickers:['AAPL','NVDA','GOOGL'],
+   en:{n:'Apple / NVIDIA / Alphabet',tg:'Technology',b:'Silicon Valley — AAPL, NVDA, GOOGL. Tech sector is 29% of S&P500. AI capex cycle the key 2025 earnings driver.',d:[],im:null},
+   ja:{n:'アップル・NVIDIA・アルファベット',tg:'テクノロジー',b:'シリコンバレー。テクノロジーセクターはS&P500の約29%。AI設備投資が2025年業績の主要ドライバー。',d:[],im:null}},
+  {t:'stock',c:0x3b82f6,la:47.61,lo:-122.33,tickers:['MSFT','AMZN'],
+   en:{n:'Microsoft / Amazon',tg:'Technology',b:'Seattle — Azure and AWS control 55% of global cloud market. Both pivoting capex toward GPU clusters.',d:[],im:null},
+   ja:{n:'マイクロソフト／アマゾン',tg:'テクノロジー',b:'シアトル。AzureとAWSが世界クラウドの55%を掌握。AI向けGPUクラスタへの設備投資が加速。',d:[],im:null}},
+  {t:'stock',c:0x3b82f6,la:40.71,lo:-74.01,tickers:['JPM','V','MA'],
+   en:{n:'NYSE / Wall Street',tg:'Financials',b:'New York — JPMorgan, Visa, Mastercard. Financial sector 13% of S&P500. Fed rate cut timeline is the key 2025 driver.',d:[],im:null},
+   ja:{n:'NYSE／ウォール街',tg:'金融',b:'ニューヨーク。JPモルガン・ビザ・マスターカード。金融セクターはS&P500の13%。FRB利下げタイムラインが主要テーマ。',d:[],im:null}},
+  {t:'stock',c:0x3b82f6,la:30.27,lo:-97.74,tickers:['TSLA','ORCL'],
+   en:{n:'Tesla / Oracle',tg:'Technology',b:'Austin TX — Tesla EV+FSD+Optimus robot. Oracle cloud gaining from AI partnership with Nvidia.',d:[],im:null},
+   ja:{n:'テスラ／オラクル',tg:'テクノロジー',b:'テキサス州オースティン。テスラはEV・FSD・ロボット。OracleはNvidiaとのAIパートナーシップでクラウド拡大。',d:[],im:null}},
+  {t:'stock',c:0x3b82f6,la:40.36,lo:-74.65,tickers:['LLY','MRK'],
+   en:{n:'Eli Lilly / Merck',tg:'Healthcare',b:'NJ Pharma Corridor — LLY GLP-1 obesity blockbuster. MRK Keytruda cancer drug driving growth.',d:[],im:null},
+   ja:{n:'イーライリリー／メルク',tg:'ヘルスケア',b:'NJ製薬回廊。LLYのGLP-1肥満薬が急成長。MRKのキイトルーダが癌治療を牽引。',d:[],im:null}},
+  {t:'stock',c:0x3b82f6,la:38.90,lo:-77.04,tickers:['LMT','RTX','NOC'],
+   en:{n:'Lockheed / Raytheon / Northrop',tg:'Defense',b:'DC Area — NATO spending surge driving massive backlogs. F-35, Patriot, B-21 programs expanding.',d:[],im:null},
+   ja:{n:'ロッキード・レイセオン・ノースロップ',tg:'防衛',b:'DC周辺。NATO支出急増で受注残が急拡大。F-35・パトリオット・B-21が主力。',d:[],im:null}},
+  {t:'stock',c:0x3b82f6,la:29.76,lo:-95.37,tickers:['XOM','CVX'],
+   en:{n:'ExxonMobil / Chevron',tg:'Energy',b:'Houston — XOM Pioneer acquisition adds Permian scale. CVX Hess deal adds Guyana deepwater. Strong cash return programs.',d:[],im:null},
+   ja:{n:'エクソンモービル／シェブロン',tg:'エネルギー',b:'ヒューストン。XOMはパイオニア買収でパーミアン拡大。CVXはヘス買収でガイアナ深海油田獲得。',d:[],im:null}},
+  {t:'stock',c:0x3b82f6,la:37.57,lo:126.98,tickers:['TSM'],
+   en:{n:'Samsung / TSMC Region',tg:'Technology',b:'Seoul/Taiwan — Samsung HBM3E AI chip demand surging. TSMC supplies 92% of world advanced chips.',d:[],im:null},
+   ja:{n:'サムスン・TSMC地域',tg:'テクノロジー',b:'ソウル・台湾。サムスンのHBM3E需要が急増。TSMCは世界先端チップの92%を供給。',d:[],im:null}},
+  {t:'stock',c:0x3b82f6,la:37.79,lo:-122.40,tickers:['CRM','CSCO','META'],
+   en:{n:'Salesforce / Cisco / Meta',tg:'Technology',b:'San Francisco — CRM Agentforce AI platform. CSCO Splunk security. META Llama AI and Reality Labs.',d:[],im:null},
+   ja:{n:'セールスフォース・シスコ・メタ',tg:'テクノロジー',b:'サンフランシスコ。CRMのAgentforce AI・CISCOのSplunkセキュリティ・METAのLlama AIが主軸。',d:[],im:null}},
+  {t:'stock',c:0x3b82f6,la:33.45,lo:-112.07,tickers:['AVGO'],
+   en:{n:'Broadcom',tg:'Technology',b:'Phoenix — AVGO AI custom XPU chips for Google and Meta. VMware integration expanding software revenue.',d:[],im:null},
+   ja:{n:'ブロードコム',tg:'テクノロジー',b:'フェニックス。Google・Meta向けAIカスタムXPUチップ。VMware統合でソフトウェア収益が拡大。',d:[],im:null}},
+
+  // GEO RISK
+  {t:'geo',c:0xef4444,la:31.23,lo:121.47,tickers:[],
+   en:{n:'China — Economic Slowdown',tg:'Risk',b:'GDP at 4.7%, below 5% target. Property sector crisis. Rare earth export controls escalating US-China tech decoupling.',d:[{k:'GDP',v:'4.7%'},{k:'PMI',v:'49.5'},{k:'CNY',v:'7.24'}],im:['Luxury stocks (LVMH, Kering) face China revenue headwinds','Copper and iron ore prices under pressure from weak demand','Apple (15% China rev) and Tesla (18%) face earnings risk','Mining stocks (Rio Tinto, BHP) hit by construction slowdown']},
+   ja:{n:'中国：経済減速',tg:'リスク',b:'GDP4.7%と目標5%を下回る。不動産危機継続。レアアース輸出規制で米中デカップリングが激化。',d:[{k:'GDP',v:'4.7%'},{k:'PMI',v:'49.5'},{k:'人民元',v:'7.24'}],im:['LVMH等の高級品株の中国売上に下押し圧力','銅・鉄鉱石が需要減で価格下落リスク','Apple（中国売上15%）・テスラ（18%）の業績リスク','リオティント・BHPなど資源株が建設減速で下落']}},
+  {t:'geo',c:0xef4444,la:55.76,lo:37.62,tickers:[],
+   en:{n:'Russia — Ukraine War',tg:'Risk',b:'Conflict entering 3rd year. Western sanctions deepening. European energy security reshaping global LNG trade flows.',d:[{k:'Brent',v:'$85/bbl'},{k:'EU gas',v:'85% full'}],im:['Energy stocks (XOM, CVX) benefit from elevated oil prices','Defense stocks (LMT, RTX, NOC) surge on NATO spending','European industrials face energy cost headwind vs US/Asia','Wheat and grain prices elevated — EM food inflation risk']},
+   ja:{n:'ロシア：ウクライナ戦争',tg:'リスク',b:'紛争3年目。西側制裁が深化。欧州エネルギー安保がLNG貿易を再編。',d:[{k:'ブレント',v:'$85'},{k:'EU備蓄',v:'85%'}],im:['エネルギー株（XOM・CVX）は原油高の恩恵を受ける','防衛株（LMT・RTX・NOC）はNATO支出増でバックログ急増','欧州産業はエネルギーコストで米国・アジアに競争劣位','小麦・穀物高騰が新興国へのインフレ波及リスク']}},
+  {t:'geo',c:0xef4444,la:31.77,lo:35.22,tickers:[],
+   en:{n:'Middle East Tensions',tg:'Risk',b:'Houthi attacks cut Suez Canal traffic 50%. Iran nuclear enrichment above 60%. Gold +18% YTD as safe haven.',d:[{k:'Gold',v:'+18% YTD'},{k:'Suez',v:'-50%'}],im:['Oil spike to $110-130 if Hormuz disrupted — airlines crushed','Shipping costs elevated — container rates +200% from 2023','Gold miners (Newmont, Barrick) outperform on safe haven demand','Defense contractors win missile system contracts']},
+   ja:{n:'中東：地政学リスク',tg:'リスク',b:'フーシ派攻撃でスエズ通航50%減。イラン核濃縮60%超。金は年初来+18%。',d:[{k:'金',v:'年初来+18%'},{k:'スエズ',v:'-50%'}],im:['ホルムズ封鎖なら原油110〜130ドル→航空株の利益率が急悪化','コンテナ運賃が2023年安値比+200%','金鉱株は安全資産需要で大幅アウトパフォーム','防衛株はミサイル需要で受注急増']}},
+  {t:'geo',c:0xef4444,la:25.03,lo:121.56,tickers:[],
+   en:{n:'Taiwan Strait Risk',tg:'Risk',b:'TSMC supplies 92% of world advanced chips. Any disruption freezes global tech production. US CHIPS Act investing $52B.',d:[{k:'TSMC share',v:'92%'},{k:'TSM',v:'$165'},{k:'CHIPS Act',v:'$52B'}],im:['Apple, Nvidia, AMD all TSMC-dependent — crash risk in escalation','Global smartphone and PC production halts within months','Auto industry hit — modern cars use 1,000+ chips each','Intel and Samsung benefit long-term as alt fab investment accelerates']},
+   ja:{n:'台湾海峡リスク',tg:'リスク',b:'TSMCは世界先端チップの92%を供給。有事なら世界テック生産が凍結。米CHIPSアクトが代替工場に520億ドル投資。',d:[{k:'TSMC占有率',v:'92%'},{k:'TSM',v:'$165'}],im:['Apple・Nvidia・AMD全てTSMC依存→有事で株価急落リスク','スマートフォン・PCの世界生産が数ヶ月で停止','自動車産業も直撃（1台に1000個超のチップ）','インテル・サムスンは長期的に代替生産地として恩恵']}},
+  {t:'geo',c:0xef4444,la:15.35,lo:44.21,tickers:[],
+   en:{n:'Red Sea / Houthi Attacks',tg:'Risk',b:'Drone attacks on commercial ships since Oct 2023. Lines reroute via Cape of Good Hope +12 days. Insurance premiums spiking.',d:[{k:'Suez',v:'-50%'},{k:'Freight',v:'+200%'},{k:'Extra days',v:'+12'}],im:['Shipping companies (Maersk) see near-term rate windfall','Retailers face higher costs and supply delays','Egypt loses Suez toll revenue — fiscal stress','European manufacturers hardest hit by Asia delays']},
+   ja:{n:'紅海：フーシ派攻撃',tg:'リスク',b:'2023年10月以降フーシ派が商船を攻撃。主要航路が喜望峰経由に転換し12日の遅延。保険料が急騰。',d:[{k:'スエズ',v:'-50%'},{k:'運賃',v:'+200%'},{k:'遅延',v:'+12日'}],im:['海運会社（マースク等）は短期的に運賃急騰の恩恵','小売・製造業はコスト上昇と供給遅延のダブルパンチ','エジプトはスエズ収入急減で財政圧迫','欧州メーカーはアジアサプライチェーン延長で最大の打撃']}},
+  {t:'geo',c:0xef4444,la:35.69,lo:51.39,tickers:[],
+   en:{n:'Iran — Nuclear Program',tg:'Risk',b:'Uranium enrichment above 60%, nearing weapons-grade. Breakout time under 2 weeks. Israel airstrikes remain tail risk.',d:[{k:'Enrichment',v:'60%+'},{k:'Breakout',v:'<2 weeks'}],im:['Oil shock to $110-130 if conflict erupts — airline margins destroyed','Gold and Treasuries rally as safe haven assets','Energy stocks and defense contractors outperform sharply','Shipping insurance surges for Gulf of Oman routes']},
+   ja:{n:'イラン核開発',tg:'リスク',b:'ウラン濃縮60%超で兵器化に接近。兵器化期間は2週間未満。イスラエルによる空爆はテールリスク。',d:[{k:'濃縮度',v:'60%超'},{k:'兵器化期間',v:'2週間未満'}],im:['紛争なら原油110〜130ドル→航空株の利益率が壊滅的に悪化','金・米国債が安全資産として急騰','エネルギー株・防衛株が大幅アウトパフォーム','オマーン湾航路の海上保険料が急騰']}},
+
+  // MACRO
+  {t:'macro',c:0xf59e0b,la:35.68,lo:139.65,tickers:[],
+   en:{n:'Bank of Japan',tg:'Macro',b:'BoJ exited negative rates March 2024. CPI 2.8%, Yen ¥152/USD. Wage growth key for further hikes. Nikkei near 40-year highs.',d:[{k:'USD/JPY',v:'¥152'},{k:'CPI',v:'2.8%'},{k:'Nikkei',v:'40yr high'}],im:null},
+   ja:{n:'日本銀行',tg:'マクロ',b:'日銀は2024年3月マイナス金利解除。CPI2.8%、ドル円152円。賃金上昇が追加利上げの鍵。日経は40年ぶり高値。',d:[{k:'ドル円',v:'152円'},{k:'CPI',v:'2.8%'}],im:null}},
+  {t:'macro',c:0xf59e0b,la:51.51,lo:-0.13,tickers:[],
+   en:{n:'Bank of England / ECB',tg:'Macro',b:'BoE held at 5.25%. ECB began cutting June 2024. Sterling at 1.27. EUR under political fragmentation pressure.',d:[{k:'BoE',v:'5.25%'},{k:'GBP',v:'1.27'},{k:'ECB',v:'cutting'}],im:null},
+   ja:{n:'英中銀／ECB',tg:'マクロ',b:'英中銀は5.25%据え置き。ECBは2024年6月利下げ開始。欧州政治分断がユーロを圧迫。',d:[{k:'英金利',v:'5.25%'},{k:'ECB',v:'利下げ中'}],im:null}},
+  {t:'macro',c:0xf59e0b,la:1.35,lo:103.82,tickers:[],
+   en:{n:'ASEAN / Singapore',tg:'Macro',b:'Regional financial hub. ASEAN GDP +4.8%. Supply chain diversification from China accelerating. Vietnam and Indonesia attracting record FDI.',d:[{k:'ASEAN GDP',v:'+4.8%'},{k:'SGD',v:'stable'}],im:null},
+   ja:{n:'ASEAN／シンガポール',tg:'マクロ',b:'地域金融ハブ。ASEAN GDP+4.8%。中国サプライチェーン分散加速。ベトナム・インドネシアにFDIが集中。',d:[{k:'GDP',v:'+4.8%'}],im:null}},
+  {t:'macro',c:0xf59e0b,la:39.91,lo:116.39,tickers:[],
+   en:{n:'PBOC — China Stimulus',tg:'Macro',b:'PBOC cutting rates and reserve ratios. Property sector bailout packages expanding. Fiscal stimulus accelerating.',d:[{k:'LPR',v:'3.45%'},{k:'CNY',v:'7.24'}],im:null},
+   ja:{n:'中国人民銀行：刺激策',tg:'マクロ',b:'PBOCが利下げと預金準備率引き下げ。不動産救済が拡大。財政刺激を加速。',d:[{k:'LPR',v:'3.45%'},{k:'人民元',v:'7.24'}],im:null}},
+  {t:'macro',c:0xf59e0b,la:-23.55,lo:-46.63,tickers:[],
+   en:{n:'Brazil / EM Watch',tg:'Macro',b:'Selic rate 10.5%. BRL under fiscal pressure. Commodity exports (iron ore, soy, oil) providing EM buffer.',d:[{k:'Selic',v:'10.5%'},{k:'BRL',v:'5.10'}],im:null},
+   ja:{n:'ブラジル／新興国',tg:'マクロ',b:'セリック金利10.5%。財政懸念でレアル下落。鉄鉱石・大豆・原油がクッションに。',d:[{k:'金利',v:'10.5%'},{k:'レアル',v:'5.10'}],im:null}},
+];
+
+var TAG_COLORS = {
+  'Risk':'rgba(239,68,68,0.2);color:#fca5a5','リスク':'rgba(239,68,68,0.2);color:#fca5a5',
+  'Macro':'rgba(245,158,11,0.2);color:#fcd34d','マクロ':'rgba(245,158,11,0.2);color:#fcd34d',
+  'Technology':'rgba(59,130,246,0.2);color:#93c5fd','テクノロジー':'rgba(59,130,246,0.2);color:#93c5fd',
+  'Financials':'rgba(99,102,241,0.2);color:#c4b5fd','金融':'rgba(99,102,241,0.2);color:#c4b5fd',
+  'Healthcare':'rgba(16,185,129,0.2);color:#6ee7b7','ヘルスケア':'rgba(16,185,129,0.2);color:#6ee7b7',
+  'Defense':'rgba(239,68,68,0.15);color:#fca5a5','防衛':'rgba(239,68,68,0.15);color:#fca5a5',
+  'Energy':'rgba(234,179,8,0.2);color:#fde047','エネルギー':'rgba(234,179,8,0.2);color:#fde047',
+};
+
+// ── Live price ticker bar ─────────────────────────────────────────────────────
+function buildTickerBar(prices) {
+  var items = Object.values(prices);
+  if (!items.length) return;
+  var html = '';
+  // Duplicate for seamless scroll
+  [items, items].forEach(function(arr) {
+    arr.forEach(function(p) {
+      var chg = parseFloat(p.change_pct);
+      var cls = chg >= 0 ? 'up' : 'down';
+      var sign = chg >= 0 ? '+' : '';
+      html += '<span class="tick-item">';
+      html += '<span class="tick-name">' + p.ticker + '</span>';
+      html += '<span class="tick-price">$' + p.price.toFixed(2) + '</span>';
+      html += '<span class="tick-chg ' + cls + '">' + sign + chg.toFixed(2) + '%</span>';
+      html += '</span>';
+    });
+  });
+  document.getElementById('ticker-scroll').innerHTML = html;
+  document.getElementById('st-prices').textContent = 'live prices ✓';
+  document.getElementById('st-prices').style.color = 'rgba(100,220,150,0.5)';
+}
+
+// ── Fetch prices from API ─────────────────────────────────────────────────────
+function fetchPrices() {
+  fetch('/api/prices')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      LIVE_PRICES = data.prices || {};
+      buildTickerBar(LIVE_PRICES);
+    })
+    .catch(function(e) {
+      document.getElementById('st-prices').textContent = 'prices unavailable';
+      console.log('Price fetch error:', e);
+    });
+}
+
+// Fetch on load, then every 15 minutes
+fetchPrices();
+setInterval(fetchPrices, 15 * 60 * 1000);
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function setLang(l) {
+  LANG = l;
+  document.getElementById('l-en').style.opacity = l === 'en' ? '1' : '.32';
+  document.getElementById('l-ja').style.opacity = l === 'ja' ? '1' : '.32';
+  document.getElementById('panel').style.display = 'none';
+}
+
+function setFilter(cat, btn) {
+  FILTER = cat;
+  document.querySelectorAll('.flt').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  var visible = 0;
+  allPinMeshes.forEach(function(o) {
+    o.visible = (cat === 'all' || o.userData.pinType === cat);
+    if (o.visible && o.userData.isDot) visible++;
+  });
+  document.getElementById('st-pins').textContent = visible + ' pins';
+  document.getElementById('panel').style.display = 'none';
+}
+
+function zoomIn() { targetZ = Math.max(1.2, targetZ - 0.35); updateZoom(); }
+function zoomOut() { targetZ = Math.min(5.0, targetZ + 0.35); updateZoom(); }
+function updateZoom() { document.getElementById('zoom-label').textContent = (2.9 / targetZ).toFixed(1) + '×'; }
+
+function showPanel(p) {
+  var d = p[LANG];
+  var tc = TAG_COLORS[d.tg] || 'rgba(100,100,100,0.18);color:#aaa';
+  var tag = document.getElementById('panel-tag');
+  tag.textContent = d.tg;
+  tag.style.cssText = 'background:' + tc + ';font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:4px;font-weight:600';
+  document.getElementById('panel-title').textContent = d.n;
+  document.getElementById('panel-ticker').textContent = p.tickers.length ? '[ ' + p.tickers.join(' / ') + ' ]' : '';
+  document.getElementById('panel-body').textContent = d.b;
+
+  // Static data tags
+  var el = document.getElementById('panel-data');
+  el.innerHTML = '';
+  (d.d || []).forEach(function(x) {
+    var s = document.createElement('span');
+    s.className = 'dtag';
+    s.textContent = x.k + ' ' + x.v;
+    el.appendChild(s);
+  });
+
+  // Live price tags
+  var liveEl = document.getElementById('panel-live');
+  liveEl.innerHTML = '';
+  p.tickers.forEach(function(ticker) {
+    var price = LIVE_PRICES[ticker];
+    if (price) {
+      var chg = parseFloat(price.change_pct);
+      var cls = chg >= 0 ? 'up' : 'down';
+      var sign = chg >= 0 ? '+' : '';
+      var s = document.createElement('span');
+      s.className = 'dtag ' + cls;
+      s.textContent = ticker + ' $' + price.price.toFixed(2) + ' (' + sign + chg.toFixed(2) + '%)';
+      liveEl.appendChild(s);
+    }
+  });
+
+  // Impact
+  var impEl = document.getElementById('panel-impact');
+  if (d.im && d.im.length) {
+    var lb = LANG === 'en' ? 'Market Impact' : '市場への影響';
+    var html = '<div class="impact-box"><div class="impact-title">' + lb + '</div>';
+    d.im.forEach(function(x) { html += '<div class="impact-item">' + x + '</div>'; });
+    html += '</div>';
+    impEl.innerHTML = html;
+  } else {
+    impEl.innerHTML = '';
+  }
+
+  document.getElementById('panel').style.display = 'block';
+}
+
+// ── Map texture ───────────────────────────────────────────────────────────────
+function latLon(lat, lon, r) {
+  var phi = (90 - lat) * Math.PI / 180, th = (lon + 180) * Math.PI / 180;
+  return new THREE.Vector3(-r * Math.sin(phi) * Math.cos(th), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(th));
+}
+
+function buildMap() {
+  var c = document.createElement('canvas'); c.width = 2048; c.height = 1024;
+  var ctx = c.getContext('2d');
+  ctx.fillStyle = '#040f1e'; ctx.fillRect(0, 0, 2048, 1024);
+  function px(lon, lat) { return [(lon + 180) / 360 * 2048, (90 - lat) / 180 * 1024]; }
+  function poly(coords, fc, sc) {
+    ctx.beginPath();
+    for (var i = 0; i < coords.length; i++) { var p = px(coords[i][0], coords[i][1]); i === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1]); }
+    ctx.closePath(); ctx.fillStyle = fc || '#1e4535'; ctx.fill();
+    ctx.strokeStyle = sc || 'rgba(80,190,140,0.22)'; ctx.lineWidth = 0.8; ctx.stroke();
+  }
+  var L = '#1e4535', L2 = '#193d2e', IC = '#1e3a4a';
+  poly([[-168,71],[-162,73],[-155,71],[-148,70],[-140,60],[-132,56],[-126,49],[-124,46],[-124,40],[-121,36],[-117,32],[-110,24],[-105,20],[-97,22],[-92,20],[-87,17],[-83,10],[-78,9],[-76,9],[-83,9],[-90,15],[-92,19],[-88,21],[-97,22],[-105,20],[-110,25],[-117,30],[-120,35],[-124,41],[-124,49],[-126,50],[-130,55],[-135,59],[-145,61],[-152,60],[-162,61],[-165,64],[-168,66],[-168,71]], L);
+  poly([[-168,71],[-166,66],[-162,60],[-156,57],[-152,57],[-148,60],[-141,60],[-138,59],[-132,57],[-140,60],[-148,70],[-155,71],[-162,73],[-168,71]], L);
+  poly([[-44,83],[-28,84],[-18,77],[-20,70],[-28,68],[-42,66],[-52,68],[-55,72],[-52,78],[-44,83]], IC);
+  poly([[-80,12],[-78,5],[-62,8],[-52,6],[-50,2],[-35,5],[-35,-5],[-36,-10],[-38,-14],[-40,-22],[-43,-23],[-48,-28],[-52,-33],[-57,-38],[-62,-44],[-65,-52],[-70,-56],[-72,-50],[-76,-44],[-80,-36],[-80,-25],[-78,-15],[-76,-8],[-78,-2],[-80,5],[-80,12]], L);
+  poly([[-10,36],[-7,38],[-2,38],[2,43],[5,43],[8,44],[12,44],[15,41],[18,40],[20,43],[24,44],[28,46],[30,50],[28,53],[24,55],[20,58],[24,65],[20,70],[16,70],[12,66],[8,62],[5,58],[0,52],[-4,44],[-8,38],[-10,36]], L);
+  poly([[5,58],[7,58],[10,55],[14,55],[16,58],[20,60],[24,65],[28,70],[30,70],[28,68],[25,65],[20,62],[16,62],[12,62],[8,60],[5,58]], L);
+  poly([[-5,50],[-3,58],[0,59],[2,54],[0,51],[-2,50],[-5,50]], L2);
+  poly([[-24,64],[-14,63],[-13,65],[-16,66],[-20,66],[-24,65],[-24,64]], IC);
+  poly([[-18,15],[-15,20],[-8,23],[0,22],[8,24],[15,23],[22,22],[30,22],[35,18],[38,16],[42,12],[44,10],[42,5],[40,-2],[38,-8],[36,-18],[34,-26],[30,-34],[26,-34],[20,-36],[18,-34],[14,-30],[10,-25],[8,-15],[4,-5],[2,4],[0,6],[-4,5],[-8,5],[-12,8],[-15,11],[-18,15]], L);
+  poly([[44,-12],[50,-15],[50,-24],[46,-26],[44,-22],[44,-12]], L2);
+  poly([[28,36],[33,37],[36,36],[40,38],[44,38],[46,40],[50,40],[55,25],[57,22],[54,18],[48,12],[44,13],[42,12],[40,16],[36,22],[34,30],[30,34],[28,36]], L);
+  poly([[36,22],[42,12],[48,12],[56,22],[58,22],[56,24],[52,22],[48,18],[44,16],[40,16],[36,22]], L);
+  poly([[28,68],[35,72],[42,74],[55,74],[70,74],[80,74],[95,74],[110,72],[120,70],[130,72],[140,72],[150,68],[160,68],[168,62],[170,56],[162,50],[154,46],[146,44],[140,42],[130,40],[120,42],[112,38],[100,42],[88,44],[78,46],[68,52],[58,52],[50,48],[44,48],[38,48],[35,48],[30,52],[26,56],[28,62],[28,68]], L);
+  poly([[55,74],[70,76],[85,78],[100,78],[115,76],[130,74],[145,72],[158,70],[168,68],[162,68],[150,68],[140,72],[130,72],[120,70],[110,72],[95,74],[80,74],[70,74],[55,74]], L2);
+  poly([[158,52],[162,56],[164,60],[162,62],[158,60],[156,54],[158,52]], L2);
+  poly([[68,24],[72,24],[76,26],[80,28],[84,28],[88,26],[92,22],[94,20],[92,12],[80,8],[78,8],[76,10],[72,18],[68,22],[68,24]], L);
+  poly([[98,20],[100,14],[102,6],[104,2],[104,-2],[106,-6],[110,-8],[116,-8],[120,-10],[124,-8],[126,-4],[128,-2],[130,-2],[132,-4],[130,-6],[126,-6],[122,-4],[118,-8],[114,-8],[110,-8],[106,-6],[102,-2],[100,4],[96,10],[92,16],[98,20]], L);
+  poly([[108,2],[116,2],[118,4],[118,6],[116,8],[110,8],[108,4],[108,2]], L2);
+  poly([[96,4],[106,4],[106,-6],[100,-4],[96,2],[96,4]], L2);
+  poly([[106,-6],[112,-8],[114,-8],[108,-8],[106,-6]], L2);
+  poly([[118,18],[122,18],[124,14],[122,10],[118,12],[116,14],[118,18]], L2);
+  poly([[78,48],[88,48],[98,44],[108,40],[118,36],[122,32],[122,26],[118,22],[114,20],[110,18],[106,22],[102,22],[98,26],[92,26],[88,30],[84,28],[80,32],[76,36],[72,38],[76,42],[78,48]], L);
+  poly([[124,38],[128,38],[130,36],[128,34],[124,34],[122,36],[124,38]], L2);
+  // Japan islands — separate
+  poly([[130,33],[131,34],[133,35],[135,36],[137,37],[138,38],[140,39],[141,40],[141,41],[140,42],[138,38],[136,36],[134,34],[132,34],[130,33]], L2, 'rgba(100,210,160,0.4)');
+  poly([[140,44],[141,44],[143,44],[145,44],[145,42],[143,42],[141,42],[140,43],[140,44]], L2, 'rgba(100,210,160,0.4)');
+  poly([[130,32],[132,32],[132,31],[130,31],[130,32]], L2, 'rgba(100,210,160,0.4)');
+  poly([[133,34],[135,34],[135,33],[133,33],[133,34]], L2, 'rgba(100,210,160,0.4)');
+  poly([[114,-22],[116,-20],[118,-18],[124,-14],[130,-14],[135,-12],[138,-18],[142,-18],[146,-20],[150,-24],[152,-26],[154,-28],[152,-34],[148,-36],[144,-38],[140,-36],[134,-32],[128,-34],[124,-32],[120,-28],[116,-26],[114,-24],[114,-22]], L);
+  poly([[144,-40],[148,-40],[148,-44],[144,-44],[144,-40]], L2);
+  poly([[132,-2],[136,-2],[140,-4],[144,-6],[142,-8],[136,-8],[132,-6],[132,-2]], L2);
+  poly([[172,-36],[175,-36],[177,-38],[175,-40],[172,-40],[172,-36]], L2);
+  poly([[168,-44],[172,-44],[174,-46],[170,-46],[168,-44]], L2);
+  poly([[-180,-70],[-120,-66],[-60,-64],[0,-66],[60,-64],[120,-66],[180,-70],[180,-90],[-180,-90],[-180,-70]], IC);
+  // Grid
+  ctx.strokeStyle = 'rgba(30,80,120,0.1)'; ctx.lineWidth = 0.4;
+  for (var ln = -180; ln <= 180; ln += 30) { var xg = (ln + 180) / 360 * 2048; ctx.beginPath(); ctx.moveTo(xg, 0); ctx.lineTo(xg, 1024); ctx.stroke(); }
+  for (var lt = -90; lt <= 90; lt += 30) { if (lt === 0) continue; var yg = (90 - lt) / 180 * 1024; ctx.beginPath(); ctx.moveTo(0, yg); ctx.lineTo(2048, yg); ctx.stroke(); }
+  ctx.strokeStyle = 'rgba(60,160,120,0.2)'; ctx.lineWidth = 1; ctx.setLineDash([8, 6]);
+  ctx.beginPath(); ctx.moveTo(0, 512); ctx.lineTo(2048, 512); ctx.stroke();
+  ctx.setLineDash([]);
+  return new THREE.CanvasTexture(c);
+}
+
+// ── Three.js init ─────────────────────────────────────────────────────────────
+(function init() {
+  var canvas = document.getElementById('globe');
+  var W = window.innerWidth, H = window.innerHeight;
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(42, W / H, 0.1, 1000);
+  camera.position.z = currentZ;
+  var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+  renderer.setSize(W, H); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  var globe = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 72, 72),
+    new THREE.MeshPhongMaterial({ map: buildMap(), shininess: 6, specular: new THREE.Color(0x0a3020) })
+  );
+  scene.add(globe);
+  scene.add(new THREE.Mesh(new THREE.SphereGeometry(1.05, 32, 32), new THREE.MeshBasicMaterial({ color: 0x0a4030, transparent: true, opacity: 0.04, side: THREE.BackSide })));
+  scene.add(new THREE.AmbientLight(0x2a4455, 1.0));
+  var sun = new THREE.DirectionalLight(0x99bbcc, 1.2); sun.position.set(5, 3, 5); scene.add(sun);
+
+  PINS.forEach(function(p, i) {
+    var pos = latLon(p.la, p.lo, 1.025);
+    var sz = p.t === 'stock' ? 0.018 : 0.024;
+    var dot = new THREE.Mesh(new THREE.SphereGeometry(sz, 8, 8), new THREE.MeshBasicMaterial({ color: p.c }));
+    dot.position.copy(pos); dot.userData = { pin: p, pinType: p.t, isDot: true };
+    globe.add(dot); allPinMeshes.push(dot);
+    if (p.t !== 'stock') {
+      var dir = pos.clone().normalize();
+      var ring = new THREE.Mesh(new THREE.RingGeometry(0.03, 0.042, 18), new THREE.MeshBasicMaterial({ color: p.c, transparent: true, opacity: 0.3, side: THREE.DoubleSide }));
+      ring.position.copy(pos.clone().add(dir.clone().multiplyScalar(0.002)));
+      ring.lookAt(pos.clone().multiplyScalar(3));
+      ring.userData = { phase: i * 0.55, pinType: p.t };
+      globe.add(ring); ringMeshes.push(ring); allPinMeshes.push(ring);
+    }
+  });
+
+  document.getElementById('st-pins').textContent = PINS.length + ' pins';
+
+  var isDrag = false, prev = { x: 0, y: 0 }, rotY = 0.4, rotX = 0.15, autoRot = true;
+  canvas.addEventListener('mousedown', function(e) { isDrag = true; prev = { x: e.clientX, y: e.clientY }; autoRot = false; canvas.classList.add('dragging'); });
+  canvas.addEventListener('touchstart', function(e) { isDrag = true; prev = { x: e.touches[0].clientX, y: e.touches[0].clientY }; autoRot = false; }, { passive: true });
+  window.addEventListener('mouseup', function() { isDrag = false; canvas.classList.remove('dragging'); });
+  window.addEventListener('touchend', function() { isDrag = false; });
+  window.addEventListener('mousemove', function(e) { if (!isDrag) return; rotY += (e.clientX - prev.x) * 0.005; rotX += (e.clientY - prev.y) * 0.004; rotX = Math.max(-1.1, Math.min(1.1, rotX)); prev = { x: e.clientX, y: e.clientY }; });
+  window.addEventListener('touchmove', function(e) { if (!isDrag) return; rotY += (e.touches[0].clientX - prev.x) * 0.005; rotX += (e.touches[0].clientY - prev.y) * 0.004; rotX = Math.max(-1.1, Math.min(1.1, rotX)); prev = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }, { passive: true });
+  canvas.addEventListener('wheel', function(e) { e.preventDefault(); targetZ = Math.max(1.2, Math.min(5.0, targetZ + e.deltaY * 0.004)); updateZoom(); }, { passive: false });
+
+  var lastPinch = null;
+  canvas.addEventListener('touchstart', function(e) { if (e.touches.length === 2) lastPinch = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); }, { passive: true });
+  canvas.addEventListener('touchmove', function(e) { if (e.touches.length === 2 && lastPinch) { var d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); targetZ = Math.max(1.2, Math.min(5.0, targetZ * (lastPinch / d))); lastPinch = d; updateZoom(); } }, { passive: true });
+
+  var raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
+  canvas.addEventListener('click', function(e) {
+    var rect = canvas.getBoundingClientRect();
+    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    var clickable = globe.children.filter(function(c) { return c.userData && c.userData.pin && c.visible !== false; });
+    var hits = raycaster.intersectObjects(clickable);
+    if (hits.length > 0) showPanel(hits[0].object.userData.pin);
+  });
+
+  var t = 0;
+  (function animate() {
+    requestAnimationFrame(animate); t += 0.016;
+    if (autoRot) rotY += 0.0012;
+    globe.rotation.y = rotY; globe.rotation.x = rotX;
+    currentZ += (targetZ - currentZ) * 0.08; camera.position.z = currentZ;
+    ringMeshes.forEach(function(r) {
+      if (r.visible) { r.material.opacity = 0.1 + 0.22 * Math.abs(Math.sin(t * 1.8 + r.userData.phase)); var s = 1 + 0.1 * Math.abs(Math.sin(t * 1.8 + r.userData.phase)); r.scale.set(s, s, s); }
+    });
+    renderer.render(scene, camera);
+  })();
+
+  window.addEventListener('resize', function() { var W2 = window.innerWidth, H2 = window.innerHeight; camera.aspect = W2 / H2; camera.updateProjectionMatrix(); renderer.setSize(W2, H2); });
+})();
+</script>
+</body>
+</html>
